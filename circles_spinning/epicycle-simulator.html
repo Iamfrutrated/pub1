@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Nested Rotating Circles — Simulator</title>
+<style>
+  :root {
+    --bg: #0b1117;
+    --panel: #0f1722;
+    --panel-edge: #1d2a3a;
+    --ink: #c7d4e0;
+    --ink-dim: #6b7c8f;
+    --cyan: #38bdf8;
+    --amber: #fbbf24;
+    --grid: #18222e;
+    --accent: #f472b6;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --display: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--display);
+    -webkit-font-smoothing: antialiased;
+  }
+  #app {
+    display: grid;
+    grid-template-columns: 280px 1fr;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+  header {
+    grid-column: 1 / -1;
+    padding: 14px 22px;
+    border-bottom: 1px solid var(--panel-edge);
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+  }
+  header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+  header .sub {
+    font-size: 12px;
+    color: var(--ink-dim);
+    font-family: var(--mono);
+  }
+
+  /* Sidebar */
+  aside {
+    border-right: 1px solid var(--panel-edge);
+    background: var(--panel);
+    padding: 18px 18px 24px;
+    overflow-y: auto;
+  }
+  aside h2 {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--ink-dim);
+    margin: 0 0 12px;
+    font-weight: 600;
+  }
+  .ctrl { margin-bottom: 18px; }
+  .ctrl label {
+    display: flex;
+    justify-content: space-between;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+  .ctrl label .val {
+    font-family: var(--mono);
+    color: var(--cyan);
+  }
+  .ctrl input[type="range"] {
+    width: 100%;
+    accent-color: var(--cyan);
+  }
+  .toggles { display: flex; flex-direction: column; gap: 9px; }
+  .chk {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    cursor: pointer;
+  }
+  .chk input { accent-color: var(--cyan); cursor: pointer; }
+  .playback { display: flex; gap: 10px; }
+  .btn {
+    flex: 1 1 auto;
+    padding: 8px 10px;
+    font-family: var(--display);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--ink);
+    background: #16202c;
+    border: 1px solid var(--panel-edge);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.12s, border-color 0.12s;
+  }
+  .btn:hover { background: #1c2937; border-color: #2b3d52; }
+  .btn.primary { color: #06222e; background: var(--cyan); border-color: var(--cyan); }
+  .btn.primary:hover { background: #5cccfa; }
+  .legend {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-size: 11px;
+    color: var(--ink);
+    margin-bottom: 18px;
+  }
+  .legend span { display: flex; align-items: center; gap: 8px; }
+  .sw { display: inline-block; flex: 0 0 auto; }
+  .sw.dot { width: 9px; height: 9px; border-radius: 50%; }
+  .sw.line { width: 16px; height: 2px; border-radius: 1px; }
+  .note {
+    font-size: 11px;
+    color: var(--ink-dim);
+    line-height: 1.5;
+    border-top: 1px solid var(--panel-edge);
+    padding-top: 14px;
+  }
+  code { font-family: var(--mono); color: var(--cyan); font-size: 0.92em; }
+
+  /* Responsive: stack sidebar + panels on narrow viewports */
+  @media (max-width: 860px) {
+    #app {
+      grid-template-columns: 1fr;
+      grid-template-rows: auto auto 1fr;
+    }
+    aside {
+      border-right: none;
+      border-bottom: 1px solid var(--panel-edge);
+      max-height: 38vh;
+    }
+    main {
+      grid-template-columns: 1fr;
+      grid-template-rows: 1fr 1fr;
+    }
+    .panel + .panel { border-left: none; border-top: 1px solid var(--panel-edge); }
+  }
+
+  /* Split canvas area */
+  main {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 0;
+    min-width: 0;
+  }
+  .panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    min-height: 0;
+  }
+  .panel + .panel { border-left: 1px solid var(--panel-edge); }
+  .panel .label {
+    position: absolute;
+    top: 12px;
+    left: 14px;
+    z-index: 2;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.04em;
+    color: var(--ink-dim);
+    pointer-events: none;
+  }
+  .panel .label b { color: var(--ink); font-weight: 600; }
+  .panel > canvas {
+    flex: 1 1 auto;
+    width: 100%;
+    min-height: 0;
+    display: block;
+  }
+  .readouts {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 14px;
+    border-top: 1px solid var(--panel-edge);
+    background: rgba(0, 0, 0, 0.18);
+  }
+  .stats {
+    display: flex;
+    gap: 16px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-dim);
+    white-space: nowrap;
+  }
+  .stats b { color: var(--ink); font-weight: 600; margin-left: 3px; }
+  .spark-wrap {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .spark-lbl {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+  }
+  .spark {
+    width: 160px;
+    height: 30px;
+    display: block;
+    background: rgba(0, 0, 0, 0.25);
+    border: 1px solid var(--panel-edge);
+    border-radius: 3px;
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>Nested Rotating Circles</h1>
+    <span class="sub">shared-ω vs relative-ω · constant vs oscillating |a|</span>
+  </header>
+
+  <aside>
+    <h2>Parameters</h2>
+    <div class="ctrl">
+      <label>N (circles) <span class="val" id="valN">4</span></label>
+      <input type="range" id="N" min="1" max="8" step="1" value="4" />
+    </div>
+    <div class="ctrl">
+      <label>λ (radius ratio) <span class="val" id="valLambda">0.50</span></label>
+      <input type="range" id="lambda" min="0.1" max="0.95" step="0.01" value="0.5" />
+    </div>
+    <div class="ctrl">
+      <label>ω (rad/s) <span class="val" id="valOmega">1.00</span></label>
+      <input type="range" id="omega" min="0.2" max="3.0" step="0.05" value="1.0" />
+    </div>
+    <div class="ctrl">
+      <label>speed <span class="val" id="valSpeed">1.00×</span></label>
+      <input type="range" id="speed" min="0.25" max="4" step="0.05" value="1" />
+    </div>
+
+    <h2>Overlays</h2>
+    <div class="ctrl toggles">
+      <label class="chk"><input type="checkbox" id="tgTrail" checked /> Trail</label>
+      <label class="chk"><input type="checkbox" id="tgAcc" checked /> Acceleration vector</label>
+      <label class="chk"><input type="checkbox" id="tgVel" /> Velocity vector</label>
+    </div>
+
+    <h2>Playback</h2>
+    <div class="ctrl playback">
+      <button id="btnPlay" class="btn primary">Pause</button>
+      <button id="btnReset" class="btn">Reset</button>
+    </div>
+    <div class="ctrl">
+      <label>t (sim time, s) <span class="val" id="valT">0.00</span></label>
+    </div>
+
+    <h2>Legend</h2>
+    <div class="legend">
+      <span><i class="sw dot" style="background:#fbbf24"></i> mass</span>
+      <span><i class="sw line" style="background:#f472b6"></i> acceleration</span>
+      <span><i class="sw line" style="background:#4ade80"></i> velocity</span>
+      <span><i class="sw line" style="background:#fbbf24"></i> trail</span>
+    </div>
+
+    <p class="note">
+      Shared-ω spins as one rigid body → the mass traces a circle and |a| is constant
+      (flat sparkline). Relative-ω compounds the rotations → a spirograph path with
+      oscillating |a|. Both panels share one <code>simTime</code>.
+    </p>
+  </aside>
+
+  <main>
+    <div class="panel">
+      <div class="label"><b>shared-ω</b> &nbsp;rigid · circle</div>
+      <canvas id="cv-shared"></canvas>
+      <div class="readouts">
+        <div class="stats">
+          <span>|R| <b id="r-shared">–</b></span>
+          <span>|v| <b id="v-shared">–</b></span>
+          <span>|a| <b id="a-shared">–</b></span>
+          <span>T <b id="t-shared">–</b></span>
+        </div>
+        <div class="spark-wrap"><span class="spark-lbl">|a|</span><canvas class="spark" id="sp-shared"></canvas></div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="label"><b>relative-ω</b> &nbsp;compound · spirograph</div>
+      <canvas id="cv-relative"></canvas>
+      <div class="readouts">
+        <div class="stats">
+          <span>|R| <b id="r-relative">–</b></span>
+          <span>|v| <b id="v-relative">–</b></span>
+          <span>|a| <b id="a-relative">–</b></span>
+          <span>T <b id="t-relative">–</b></span>
+        </div>
+        <div class="spark-wrap"><span class="spark-lbl">|a|</span><canvas class="spark" id="sp-relative"></canvas></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script>
+"use strict";
+
+// ---------------------------------------------------------------------------
+// State — single source of truth (§4)
+// ---------------------------------------------------------------------------
+const params = {
+  N: 4,
+  lambda: 0.5,
+  omega: 1.0,
+  t: 0,            // sim time, advanced by the RAF loop (Phase 2)
+  speed: 1.0,      // sim-time multiplier (§3)
+  fitFraction: 0.45, // assembly max-reach occupies this fraction of min(canvas dim)
+  showTrail: true,
+  showAcc: true,
+  showVel: false,
+};
+
+// Trail ring buffers — one per panel, points in math coords (§4)
+const TRAIL_MAX = 600;
+const trails = { shared: [], relative: [] };
+// |a| time-series buffers for the sparklines (§5)
+const SPARK_MAX = 200;
+const sparks = { shared: [], relative: [] };
+function clearTrails() {
+  trails.shared.length = 0; trails.relative.length = 0;
+  sparks.shared.length = 0; sparks.relative.length = 0;
+}
+
+// Vector display gains (px per unit accel/vel) + safety cap (Phase 4; tuned in polish)
+const ACC_GAIN = 0.12;
+const VEL_GAIN = 0.35;
+
+// Loop state (Phase 2)
+const loop = {
+  playing: true,
+  lastTs: null,    // previous RAF timestamp (ms); null = (re)start, skip dt this frame
+  advanced: false, // did sim time advance this frame? (gates trail growth)
+  rafId: null,
+};
+const MAX_DT = 0.05; // clamp dt to 50 ms so tab-refocus never jumps (§7)
+
+// Per-circle initial phases. v1 ships aligned-only (§8 resolved): all zero.
+function phases(N) {
+  return new Array(N).fill(0);
+}
+
+// ---------------------------------------------------------------------------
+// Geometry (§4 render math)
+// ---------------------------------------------------------------------------
+// Auto-fit base radius r1 so the whole assembly fits the canvas (§7):
+//   maxReach = r1 · (1 - λ^N)/(1 - λ)   [λ != 1]
+function autoFitR1(N, lambda, viewMin) {
+  const target = params.fitFraction * viewMin; // desired max reach in px
+  let geom;
+  if (Math.abs(1 - lambda) < 1e-9) {
+    geom = N;
+  } else {
+    geom = (1 - Math.pow(lambda, N)) / (1 - lambda);
+  }
+  return target / geom;
+}
+
+// Pure: returns geometry + analytic velocity/acceleration, all in math coords
+// (origin = C1 center). mode: "shared" | "relative".
+//
+// Each circle's angle advances at rate k·ω where k = 1 (shared) or (i+1) (relative).
+//   pos  = Σ r_i (cosθ_i, sinθ_i)
+//   vel  = Σ r_i·kω (-sinθ_i, cosθ_i)              (d/dt)
+//   acc  = Σ r_i·(kω)² (-cosθ_i, -sinθ_i)          (d²/dt²; shared ⇒ -ω²·R_net, §4)
+function computePositions(p, t, mode, r1) {
+  const { N, lambda, omega } = p;
+  const ph = phases(N);
+  const centers = [{ x: 0, y: 0 }];
+  let r = r1;
+  let netX = 0, netY = 0;
+  let vx = 0, vy = 0, ax = 0, ay = 0;
+  for (let i = 0; i < N; i++) {
+    const k = mode === "shared" ? 1 : (i + 1);
+    const angle = k * omega * t + ph[i];
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const dx = r * c, dy = r * s;
+    const prev = centers[i];
+    centers.push({ x: prev.x + dx, y: prev.y + dy });
+    netX += dx; netY += dy;
+    const w = k * omega;
+    vx += -r * w * s;        vy += r * w * c;
+    ax += -r * w * w * c;    ay += -r * w * w * s;
+    r *= lambda;
+  }
+  const mass = centers[centers.length - 1];
+  return {
+    centers, mass,
+    rNet: Math.hypot(netX, netY),
+    vel: { x: vx, y: vy },
+    acc: { x: ax, y: ay },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Canvas setup — DPR-aware (§7)
+// ---------------------------------------------------------------------------
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  const cssW = Math.max(1, Math.floor(rect.width));
+  const cssH = Math.max(1, Math.floor(rect.height));
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in CSS px
+  return { ctx, w: cssW, h: cssH };
+}
+
+// ---------------------------------------------------------------------------
+// Drawing (§5 aesthetic) — generalized to (ctx, mode) so both panels reuse it (Phase 6)
+// ---------------------------------------------------------------------------
+const COL = {
+  grid: "#18222e",
+  circle: "#38bdf8",
+  radius: "#2b6f8c",
+  center: "#5b7187",
+  mass: "#fbbf24",
+  trail: "#fbbf24",
+  acc: "#f472b6",   // accent pink — the visual hero (§5)
+  vel: "#4ade80",   // green
+  label: "#7d93a8",
+};
+
+// Unicode subscripts for circle labels C₁…C₈
+const SUB = ["₀", "₁", "₂", "₃", "₄", "₅", "₆", "₇", "₈", "₉"];
+
+// Arrow from screen point (x,y) along screen vector (dx,dy).
+function drawArrow(ctx, x, y, dx, dy, color, width) {
+  const len = Math.hypot(dx, dy);
+  if (len < 0.5) return;
+  const ux = dx / len, uy = dy / len;
+  const ex = x + dx, ey = y + dy;
+  const head = Math.min(10, len * 0.4);
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+  // arrowhead
+  const a = Math.atan2(uy, ux);
+  ctx.beginPath();
+  ctx.moveTo(ex, ey);
+  ctx.lineTo(ex - head * Math.cos(a - 0.4), ey - head * Math.sin(a - 0.4));
+  ctx.lineTo(ex - head * Math.cos(a + 0.4), ey - head * Math.sin(a + 0.4));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGrid(ctx, w, h) {
+  const step = 40;
+  ctx.save();
+  ctx.strokeStyle = COL.grid;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  for (let x = (w / 2) % step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+  for (let y = (h / 2) % step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+  ctx.stroke();
+  ctx.restore();
+}
+
+// Cached per-panel DOM refs (script runs after the DOM at end of <body>)
+const PANELS = {
+  shared: {
+    canvas: document.getElementById("cv-shared"),
+    spark: document.getElementById("sp-shared"),
+    r: document.getElementById("r-shared"), v: document.getElementById("v-shared"),
+    a: document.getElementById("a-shared"), T: document.getElementById("t-shared"),
+  },
+  relative: {
+    canvas: document.getElementById("cv-relative"),
+    spark: document.getElementById("sp-relative"),
+    r: document.getElementById("r-relative"), v: document.getElementById("v-relative"),
+    a: document.getElementById("a-relative"), T: document.getElementById("t-relative"),
+  },
+};
+
+// |a| sparkline — per-panel autoscale; a (near-)constant signal renders as a flat
+// mid-line (the shared-ω "aha"), an oscillating one fills the box (§5).
+function drawSpark(canvas, buf, color) {
+  const { ctx, w, h } = setupCanvas(canvas);
+  ctx.clearRect(0, 0, w, h);
+  if (buf.length < 2) return;
+  let min = Infinity, max = -Infinity;
+  for (const v of buf) { if (v < min) min = v; if (v > max) max = v; }
+  const range = max - min;
+  const pad = 3;
+  const flat = range <= Math.max(1e-9, max * 1e-3);
+  const yFor = (v) => flat ? h / 2 : h - pad - ((v - min) / range) * (h - 2 * pad);
+  const n = buf.length;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * w;
+    const y = yFor(buf[i]);
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
+function renderPanel(mode) {
+  const P = PANELS[mode];
+  const { ctx, w, h } = setupCanvas(P.canvas);
+  const cx = w / 2, cy = h / 2;
+  const viewMin = Math.min(w, h);
+  const r1 = autoFitR1(params.N, params.lambda, viewMin);
+
+  ctx.clearRect(0, 0, w, h);
+  drawGrid(ctx, w, h);
+
+  // math (origin at C1, +y up) → screen (origin top-left, +y down)
+  const toScreen = (pt) => ({ x: cx + pt.x, y: cy - pt.y });
+
+  const { centers, mass, vel, acc, rNet } = computePositions(params, params.t, mode, r1);
+
+  // trail ring buffer — append the mass when sim time advanced this frame (§4, §7)
+  const buf = trails[mode];
+  if (loop.advanced) {
+    buf.push({ x: mass.x, y: mass.y });
+    if (buf.length > TRAIL_MAX) buf.shift();
+  }
+  if (params.showTrail && buf.length > 1) {
+    for (let i = 1; i < buf.length; i++) {
+      const a = toScreen(buf[i - 1]);
+      const b = toScreen(buf[i]);
+      ctx.save();
+      ctx.strokeStyle = COL.trail;
+      ctx.globalAlpha = 0.05 + 0.5 * (i / buf.length); // fade older → newer
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  // nested circles + connecting radii, decreasing opacity as we nest inward→out
+  let r = r1;
+  for (let i = 0; i < params.N; i++) {
+    const c = toScreen(centers[i]);
+    const next = toScreen(centers[i + 1]);
+    const alpha = 0.85 - 0.6 * (i / Math.max(1, params.N - 1));
+
+    // circle C_{i+1}
+    ctx.save();
+    ctx.strokeStyle = COL.circle;
+    ctx.globalAlpha = Math.max(0.18, alpha);
+    ctx.lineWidth = 1.25;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.restore();
+
+    // radius from this center to the next point
+    ctx.save();
+    ctx.strokeStyle = COL.radius;
+    ctx.globalAlpha = 0.9;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(c.x, c.y);
+    ctx.lineTo(next.x, next.y);
+    ctx.stroke();
+    ctx.restore();
+
+    // center marker + label C₁…C_N
+    ctx.save();
+    ctx.fillStyle = COL.center;
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 2.5, 0, Math.PI * 2);
+    ctx.fill();
+    if (params.N <= 8) {
+      ctx.fillStyle = COL.label;
+      ctx.font = "10px ui-monospace, Menlo, monospace";
+      ctx.textBaseline = "middle";
+      ctx.fillText("C" + SUB[i + 1], c.x + 6, c.y - 7);
+    }
+    ctx.restore();
+
+    r *= params.lambda;
+  }
+
+  // mass on C_N
+  const m = toScreen(mass);
+  ctx.save();
+  ctx.fillStyle = COL.mass;
+  ctx.shadowColor = COL.mass;
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(m.x, m.y, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+
+  // vectors from the mass (math +y up → screen +y down: flip dy). Capped length.
+  const cap = viewMin * 0.6;
+  const capped = (g, v) => {
+    let sx = v.x * g, sy = -v.y * g;
+    const l = Math.hypot(sx, sy);
+    if (l > cap) { sx *= cap / l; sy *= cap / l; }
+    return [sx, sy];
+  };
+  if (params.showVel) {
+    const [sx, sy] = capped(VEL_GAIN, vel);
+    drawArrow(ctx, m.x, m.y, sx, sy, COL.vel, 2);
+  }
+  if (params.showAcc) {
+    const [sx, sy] = capped(ACC_GAIN, acc);
+    drawArrow(ctx, m.x, m.y, sx, sy, COL.acc, 2.5);
+  }
+
+  // readouts (§2): |R|=|R_net|, |v|=|vel|, |a|=|acc|, T=2π/ω base period
+  const aMag = Math.hypot(acc.x, acc.y);
+  const vMag = Math.hypot(vel.x, vel.y);
+  P.r.textContent = rNet.toFixed(0);
+  P.v.textContent = vMag.toFixed(0);
+  P.a.textContent = aMag.toFixed(0);
+  P.T.textContent = (2 * Math.PI / params.omega).toFixed(2) + "s";
+
+  // sparkline buffer — push |a| only when sim time advanced (matches the trail)
+  const sb = sparks[mode];
+  if (loop.advanced) {
+    sb.push(aMag);
+    if (sb.length > SPARK_MAX) sb.shift();
+  }
+  drawSpark(P.spark, sb, COL.acc);
+}
+
+function renderAll() {
+  // Guard each panel so a throw in one can't break the RAF chain or the other panel.
+  for (const mode of ["shared", "relative"]) {
+    try { renderPanel(mode); }
+    catch (err) { console.error(`renderPanel(${mode}) failed:`, err); }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Animation loop (Phase 2) — RAF, dt clamp, time scaling
+// ---------------------------------------------------------------------------
+const valT = document.getElementById("valT");
+
+function frame(ts) {
+  loop.advanced = false;
+  if (loop.playing) {
+    if (loop.lastTs !== null) {
+      let dt = (ts - loop.lastTs) / 1000;          // seconds
+      dt = Math.min(Math.max(dt, 0), MAX_DT);      // clamp (§7)
+      if (dt > 0) { params.t += dt * params.speed; loop.advanced = true; }
+    }
+    loop.lastTs = ts;
+  }
+  renderAll();
+  valT.textContent = params.t.toFixed(2);
+  loop.rafId = requestAnimationFrame(frame);
+}
+
+function setPlaying(on) {
+  loop.playing = on;
+  loop.lastTs = null; // drop the accumulated gap so resuming never jumps
+  document.getElementById("btnPlay").textContent = on ? "Pause" : "Play";
+}
+
+// ---------------------------------------------------------------------------
+// Controls wiring (Phase 3 partial — sliders + playback)
+// ---------------------------------------------------------------------------
+function bind(id, key, fmt, labelId) {
+  const el = document.getElementById(id);
+  const lab = document.getElementById(labelId);
+  el.addEventListener("input", () => {
+    params[key] = parseFloat(el.value);
+    if (lab) lab.textContent = fmt(params[key]);
+  });
+}
+bind("N", "N", (v) => String(v), "valN");
+bind("lambda", "lambda", (v) => v.toFixed(2), "valLambda");
+bind("omega", "omega", (v) => v.toFixed(2), "valOmega");
+bind("speed", "speed", (v) => v.toFixed(2) + "×", "valSpeed");
+
+// N / λ change the path shape → stale trail; ω / speed only change traversal rate.
+document.getElementById("N").addEventListener("input", clearTrails);
+document.getElementById("lambda").addEventListener("input", clearTrails);
+
+function bindToggle(id, key) {
+  const el = document.getElementById(id);
+  el.addEventListener("change", () => { params[key] = el.checked; });
+}
+bindToggle("tgTrail", "showTrail");
+bindToggle("tgAcc", "showAcc");
+bindToggle("tgVel", "showVel");
+
+document.getElementById("btnPlay").addEventListener("click", () => setPlaying(!loop.playing));
+document.getElementById("btnReset").addEventListener("click", () => {
+  params.t = 0;
+  loop.lastTs = null;
+  clearTrails();
+  if (!loop.playing) { renderAll(); valT.textContent = "0.00"; }
+});
+
+// Pause-aware refocus: reset the timestamp baseline when the tab becomes visible
+document.addEventListener("visibilitychange", () => { loop.lastTs = null; });
+
+window.addEventListener("resize", () => { loop.advanced = false; renderAll(); });
+loop.rafId = requestAnimationFrame(frame);
+</script>
+</body>
+</html>
